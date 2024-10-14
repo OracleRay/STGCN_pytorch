@@ -3,11 +3,12 @@ import torch.nn as nn
 
 from model import layers
 
+
 class STGCNChebGraphConv(nn.Module):
     # STGCNChebGraphConv contains 'TGTND TGTND TNFF' structure
     # ChebGraphConv is the graph convolution from ChebyNet.
     # Using the Chebyshev polynomials of the first kind as a graph filter.
-        
+
     # T: Gated Temporal Convolution Layer (GLU or GTU)
     # G: Graph Convolution Layer (ChebGraphConv)
     # T: Gated Temporal Convolution Layer (GLU or GTU)
@@ -27,15 +28,21 @@ class STGCNChebGraphConv(nn.Module):
 
     def __init__(self, args, blocks, n_vertex):
         super(STGCNChebGraphConv, self).__init__()
-        modules = []
+        modules = []  # 存放时空卷积块
+
+        # 添加2个时空卷积块
         for l in range(len(blocks) - 3):
-            modules.append(layers.STConvBlock(args.Kt, args.Ks, n_vertex, blocks[l][-1], blocks[l+1], args.act_func, args.graph_conv_type, args.gso, args.enable_bias, args.droprate))
+            modules.append(layers.STConvBlock(args.Kt, args.Ks, n_vertex, blocks[l][-1], blocks[l + 1], args.act_func,
+                                              args.graph_conv_type, args.gso, args.enable_bias, args.droprate))
+
         self.st_blocks = nn.Sequential(*modules)
+
         Ko = args.n_his - (len(blocks) - 3) * 2 * (args.Kt - 1)
         self.Ko = Ko
-        if self.Ko > 1:
-            self.output = layers.OutputBlock(Ko, blocks[-3][-1], blocks[-2], blocks[-1][0], n_vertex, args.act_func, args.enable_bias, args.droprate)
-        elif self.Ko == 0:
+        if self.Ko > 1:  # 经过多次卷积和图卷积处理后，保留了较多的时空维度，需要OutputBlock进一步处理
+            self.output = layers.OutputBlock(Ko, blocks[-3][-1], blocks[-2], blocks[-1][0], n_vertex, args.act_func,
+                                             args.enable_bias, args.droprate)
+        elif self.Ko == 0:  # 时空卷积已经把时间维度完全消除，不需要更多处理
             self.fc1 = nn.Linear(in_features=blocks[-3][-1], out_features=blocks[-2][0], bias=args.enable_bias)
             self.fc2 = nn.Linear(in_features=blocks[-2][0], out_features=blocks[-1][0], bias=args.enable_bias)
             self.relu = nn.ReLU()
@@ -46,18 +53,18 @@ class STGCNChebGraphConv(nn.Module):
         if self.Ko > 1:
             x = self.output(x)
         elif self.Ko == 0:
-            x = self.fc1(x.permute(0, 2, 3, 1))
+            x = self.fc1(x.permute(0, 2, 3, 1))  # permute：改变x的维度顺序
             x = self.relu(x)
             x = self.fc2(x).permute(0, 3, 1, 2)
-        
         return x
+
 
 class STGCNGraphConv(nn.Module):
     # STGCNGraphConv contains 'TGTND TGTND TNFF' structure
     # GraphConv is the graph convolution from GCN.
     # GraphConv is not the first-order ChebConv, because the renormalization trick is adopted.
     # Be careful about over-smoothing.
-        
+
     # T: Gated Temporal Convolution Layer (GLU or GTU)
     # G: Graph Convolution Layer (GraphConv)
     # T: Gated Temporal Convolution Layer (GLU or GTU)
@@ -79,12 +86,14 @@ class STGCNGraphConv(nn.Module):
         super(STGCNGraphConv, self).__init__()
         modules = []
         for l in range(len(blocks) - 3):
-            modules.append(layers.STConvBlock(args.Kt, args.Ks, n_vertex, blocks[l][-1], blocks[l+1], args.act_func, args.graph_conv_type, args.gso, args.enable_bias, args.droprate))
+            modules.append(layers.STConvBlock(args.Kt, args.Ks, n_vertex, blocks[l][-1], blocks[l + 1], args.act_func,
+                                              args.graph_conv_type, args.gso, args.enable_bias, args.droprate))
         self.st_blocks = nn.Sequential(*modules)
         Ko = args.n_his - (len(blocks) - 3) * 2 * (args.Kt - 1)
         self.Ko = Ko
         if self.Ko > 1:
-            self.output = layers.OutputBlock(Ko, blocks[-3][-1], blocks[-2], blocks[-1][0], n_vertex, args.act_func, args.enable_bias, args.droprate)
+            self.output = layers.OutputBlock(Ko, blocks[-3][-1], blocks[-2], blocks[-1][0], n_vertex, args.act_func,
+                                             args.enable_bias, args.droprate)
         elif self.Ko == 0:
             self.fc1 = nn.Linear(in_features=blocks[-3][-1], out_features=blocks[-2][0], bias=args.enable_bias)
             self.fc2 = nn.Linear(in_features=blocks[-2][0], out_features=blocks[-1][0], bias=args.enable_bias)
@@ -99,5 +108,5 @@ class STGCNGraphConv(nn.Module):
             x = self.fc1(x.permute(0, 2, 3, 1))
             x = self.relu(x)
             x = self.fc2(x).permute(0, 3, 1, 2)
-        
+
         return x
