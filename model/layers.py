@@ -26,32 +26,32 @@ class Align(nn.Module):
 
 
 # 因果卷积处理1D数据（时间）：确保当前时间步的输出仅依赖于当前时间步及之前的输入，而不依赖于未来的输入
-class CausalConv1d(nn.Conv1d):
-    def __init__(self, in_channels, out_channels, kernel_size, stride=1, enable_padding=False, dilation=1, groups=1,
-                 bias=True):
-        if enable_padding == True:  # 启用零填充
-            self.__padding = (kernel_size - 1) * dilation  # dilation：膨胀系数，控制采样间隔
-        else:
-            self.__padding = 0
-        super(CausalConv1d, self).__init__(in_channels, out_channels, kernel_size=kernel_size, stride=stride,
-                                           padding=self.__padding, dilation=dilation, groups=groups, bias=bias)
-
-    def forward(self, input):
-        result = super(CausalConv1d, self).forward(input)
-        if self.__padding != 0:
-            return result[:, :, : -self.__padding]
-
-        return result
+# class CausalConv1d(nn.Conv1d):
+#     def __init__(self, in_channels, out_channels, kernel_size, stride=1, enable_padding=False, dilation=1, groups=1,
+#                  bias=True):
+#         if enable_padding == True:
+#             self.__padding = (kernel_size - 1) * dilation
+#         else:
+#             self.__padding = 0
+#         super(CausalConv1d, self).__init__(in_channels, out_channels, kernel_size=kernel_size, stride=stride,
+#                                            padding=self.__padding, dilation=dilation, groups=groups, bias=bias)
+#
+#     def forward(self, input):
+#         result = super(CausalConv1d, self).forward(input)
+#         if self.__padding != 0:
+#             return result[:, :, : -self.__padding]
+#
+#         return result
 
 
 # 因果卷积处理2D数据（空间）
 class CausalConv2d(nn.Conv2d):
     def __init__(self, in_channels, out_channels, kernel_size, stride=1, enable_padding=False, dilation=1, groups=1,
                  bias=True):
-        kernel_size = nn.modules.utils._pair(kernel_size)
-        stride = nn.modules.utils._pair(stride)
-        dilation = nn.modules.utils._pair(dilation)
-        if enable_padding == True:
+        kernel_size = nn.modules.utils._pair(kernel_size)  # 卷积核大小，表示对多少个像素（或特征）进行卷积。
+        stride = nn.modules.utils._pair(stride)  # 步长，控制卷积核滑动的步幅
+        dilation = nn.modules.utils._pair(dilation)  # dilation：膨胀系数，控制采样间隔,用来扩大卷积核的感受野
+        if enable_padding == True:  # 启用零填充
             self.__padding = [int((kernel_size[i] - 1) * dilation[i]) for i in range(len(kernel_size))]
         else:
             self.__padding = 0
@@ -61,6 +61,7 @@ class CausalConv2d(nn.Conv2d):
 
     def forward(self, input):
         if self.__padding != 0:
+            # F.pad() 函数用于在高度和宽度方向上添加填充
             input = F.pad(input, (self.left_padding[1], 0, self.left_padding[0], 0))
         result = super(CausalConv2d, self).forward(input)
 
@@ -109,14 +110,14 @@ class TemporalConvLayer(nn.Module):
             if self.act_func == 'glu':
                 # Explanation of Gated Linear Units (GLU):
                 # 通过门控机制选择性保留某些时间步的特征，这对时间序列建模非常有效
-                # The concept of GLU was first introduced in the paper 
-                # "Language Modeling with Gated Convolutional Networks". 
+                # The concept of GLU was first introduced in the paper
+                # "Language Modeling with Gated Convolutional Networks".
                 # URL: https://arxiv.org/abs/1612.08083
-                # In the GLU operation, the input tensor X is divided into two tensors, X_a and X_b, 
+                # In the GLU operation, the input tensor X is divided into two tensors, X_a and X_b,
                 # along a specific dimension.
                 # In PyTorch, GLU is computed as the element-wise multiplication of X_a and sigmoid(X_b).
                 # More information can be found here: https://pytorch.org/docs/master/nn.functional.html#torch.nn.functional.glu
-                # The provided code snippet, (x_p + x_in) ⊙ sigmoid(x_q), is an example of GLU operation. 
+                # The provided code snippet, (x_p + x_in) ⊙ sigmoid(x_q), is an example of GLU operation.
                 x = torch.mul((x_p + x_in), torch.sigmoid(x_q))  # 对 x_p 和输入的对齐结果 x_in 进行线性加和，并与 x_q 的 sigmoid 值进行点乘
 
             else:
@@ -273,7 +274,7 @@ class STConvBlock(nn.Module):
 
         self.tc2_ln = nn.LayerNorm([n_vertex, channels[2]], eps=1e-12)  # 归一化：缓解梯度消失或梯度爆炸问题
         self.relu = nn.ReLU()
-        self.dropout = nn.Dropout(p=droprate)
+        self.dropout = nn.Dropout(p=droprate)  # 正则化：dropout率为0.5
 
     def forward(self, x):
         x = self.tmp_conv1(x)
@@ -298,9 +299,9 @@ class OutputBlock(nn.Module):
         self.tmp_conv1 = TemporalConvLayer(Ko, last_block_channel, channels[0], n_vertex, act_func)
         self.fc1 = nn.Linear(in_features=channels[0], out_features=channels[1], bias=bias)
         self.fc2 = nn.Linear(in_features=channels[1], out_features=end_channel, bias=bias)
-        self.tc1_ln = nn.LayerNorm([n_vertex, channels[0]], eps=1e-12)
+        self.tc1_ln = nn.LayerNorm([n_vertex, channels[0]], eps=1e-12)  # 归一化
         self.relu = nn.ReLU()
-        self.dropout = nn.Dropout(p=droprate)
+        self.dropout = nn.Dropout(p=droprate)  # 正则化
 
     def forward(self, x):
         x = self.tmp_conv1(x)
